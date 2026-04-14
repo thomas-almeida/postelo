@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(npx tailwindcss:*)",
+      "Bash(pkill -f \"next dev\")",
+      "Bash(npx tsc:*)",
+      "Bash(npx next:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(kill 45706 46201 46233)",
+      "Bash(pkill -f \"next\")",
+      "Bash(npm run:*)",
+      "Bash(next build:*)"
+    ]
+  }
+}
