@@ -13,11 +13,13 @@ export default function CameraPage() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [useFileUpload, setUseFileUpload] = useState(false);
+  const [currentFacingMode, setCurrentFacingMode] = useState<'user' | 'environment'>('environment');
+  const [hasMultipleCameras, setHasMultipleCameras] = useState(false);
 
   useEffect(() => {
     // Verifica se estamos no cliente
     if (typeof window !== 'undefined') {
-      // Verifica se a API de mídia está disponível
+      // Verifica se todas as APIs necessárias estão disponíveis
       if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
         const initCamera = async () => {
           // Definir um timeout para garantir que o carregamento não fique preso indefinidamente
@@ -31,25 +33,43 @@ export default function CameraPage() {
 
           try {
             // Verificar se o protocolo é HTTPS em produção
-            if (typeof location !== 'undefined' && location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
-              throw new Error('Acesso à câmera requer conexão segura (HTTPS)');
+            // Em muitos ambientes de produção (com proxy reverso), o protocolo pode parecer HTTP
+            // para o navegador, mesmo que a conexão externa seja HTTPS
+            const isSecureContext = window.isSecureContext;
+
+            if (!isSecureContext && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+              throw new Error('Acesso à câmera requer contexto seguro (HTTPS ou localhost)');
             }
+
+            // Verificar se há câmeras disponíveis
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const videoDevices = devices.filter(device => device.kind === 'videoinput');
+
+            if (videoDevices.length === 0) {
+              throw new Error('Nenhuma câmera encontrada no dispositivo');
+            }
+
+            // Verificar se há múltiplas câmeras para mostrar o botão de troca
+            setHasMultipleCameras(videoDevices.length > 1);
 
             const stream = await navigator.mediaDevices.getUserMedia({
               video: {
-                facingMode: 'environment'
+                facingMode: currentFacingMode
               }
             });
 
             clearTimeout(timeoutId); // Cancelar o timeout se a câmera for acessada com sucesso
 
             if (videoRef.current) {
+              // Aguardar até que o vídeo esteja pronto para reproduzir
               videoRef.current.srcObject = stream;
 
-              // Garantir que o vídeo comece a tocar
-              videoRef.current.play().catch(error => {
-                console.error("Erro ao tentar reproduzir o vídeo:", error);
-              });
+              // Quando o metadado do vídeo estiver carregado, começar a reprodução
+              videoRef.current.onloadedmetadata = () => {
+                videoRef.current!.play().catch(error => {
+                  console.error("Erro ao tentar reproduzir o vídeo:", error);
+                });
+              };
 
               setHasPermission(true);
             }
@@ -62,7 +82,8 @@ export default function CameraPage() {
             if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
               setError('Permissão para acessar a câmera negada. Você pode usar o upload de arquivo como alternativa.');
               setUseFileUpload(true);
-            } else if (err.name === 'NotFoundError' || err.name === 'OverconstrainedError') {
+            } else if (err.name === 'NotFoundError' || err.name === 'OverconstrainedError' ||
+                      (err.message && err.message.includes('Nenhuma câmera'))) {
               setError('Câmera não encontrada ou indisponível. Use o upload de arquivo como alternativa.');
               setUseFileUpload(true);
             } else if (err.message && err.message.includes('HTTPS')) {
@@ -245,6 +266,41 @@ export default function CameraPage() {
     }
   };
 
+  // Função para alternar entre câmeras frontal e traseira
+  const toggleCamera = async () => {
+    if (videoRef.current?.srcObject) {
+      // Parar os tracks atuais
+      const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
+      tracks.forEach(track => track.stop());
+    }
+
+    // Alternar o modo de câmera
+    const newFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
+    setCurrentFacingMode(newFacingMode);
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: newFacingMode
+        }
+      });
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+
+        // Quando o metadado do vídeo estiver carregado, começar a reprodução
+        videoRef.current.onloadedmetadata = () => {
+          videoRef.current!.play().catch(error => {
+            console.error("Erro ao tentar reproduzir o vídeo:", error);
+          });
+        };
+      }
+    } catch (err) {
+      console.error('Erro ao alternar câmera:', err);
+      setError('Não foi possível alternar entre as câmeras.');
+    }
+  };
+
   return (
     <div className="relative w-full h-screen bg-black text-white">
       {isLoading ? (
@@ -303,6 +359,7 @@ export default function CameraPage() {
             autoPlay
             playsInline
             muted
+            controls={false}
             className="w-full h-full object-cover"
           />
 
@@ -310,6 +367,18 @@ export default function CameraPage() {
           <div className="absolute inset-0 flex items-center justify-center">
             <StampOverlay width={300} height={300} step={20} />
           </div>
+
+          {hasMultipleCameras && (
+            <button
+              onClick={toggleCamera}
+              className="absolute top-8 right-8 bg-white bg-opacity-70 rounded-full p-3 shadow-lg hover:bg-opacity-100 transition-all"
+              aria-label="Alternar câmera"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-gray-800" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+              </svg>
+            </button>
+          )}
 
           <button
             onClick={capturePhoto}
