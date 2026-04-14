@@ -9,7 +9,7 @@ export default function CameraPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [hasPermission, setHasPermission] = useState(true);
+  const [hasPermission, setHasPermission] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [useFileUpload, setUseFileUpload] = useState(false);
@@ -37,9 +37,7 @@ export default function CameraPage() {
 
             const stream = await navigator.mediaDevices.getUserMedia({
               video: {
-                facingMode: 'environment',
-                width: { ideal: 1280 },
-                height: { ideal: 720 }
+                facingMode: 'environment'
               }
             });
 
@@ -47,6 +45,12 @@ export default function CameraPage() {
 
             if (videoRef.current) {
               videoRef.current.srcObject = stream;
+
+              // Garantir que o vídeo comece a tocar
+              videoRef.current.play().catch(error => {
+                console.error("Erro ao tentar reproduzir o vídeo:", error);
+              });
+
               setHasPermission(true);
             }
           } catch (err: any) {
@@ -290,7 +294,6 @@ export default function CameraPage() {
           <div className="text-center p-4">
             <p className="text-red-500 mb-4">{error}</p>
             <p className="text-gray-300">Certifique-se de estar em um ambiente seguro (HTTPS) e de ter concedido permissão para acessar a câmera.</p>
-            <p>{hasPermission}</p>
           </div>
         </div>
       ) : (
